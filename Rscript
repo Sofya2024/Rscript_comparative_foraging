@@ -1,0 +1,1064 @@
+# 5. Foraging -------------------------------------------------------------
+#' convert ICIus to logICIms to define foraging buzzes 
+ICI$ICIms <- ICI$ICIus/1000
+ICI$logICIms <- log(ICI$ICIms)
+ICI$julian <- yday(ICI$date)
+ICI$season <- time2season(ICI$date, out.fmt = "seasons", type = "default")
+
+# 5.1. Foraging according to Pirotta --------------------------------------
+ICIpirotta <- ICI
+
+gghistogram(ICIpirotta, "logICIms", fill = "#005D7F", y = "density", title = "Histogram for the log ICI (in ms)")
+set.seed(123)
+mixmod <- normalmixEM(ICIpirotta$logICIms, k = 3) #averages 2.03, 4.6 and 33.8
+beep(8)
+plot(mixmod, density=TRUE, cex.axis=1.4, cex.lab=1.4, cex.main=1.8, xlab2="ln(ICI) in ms")
+summary(mixmod)
+exp(0.757768) #2.13 ms in pirotta this is 2.13ms 16.21 and 39.19
+
+lambda <- mixmod$lambda
+mu <- mixmod$mu
+sigma <- mixmod$sigma
+
+# Create a function to assign types based on the densities
+assign_type <- function(value) {
+  densities <- sapply(1:3, function(i) {
+    lambda[i] * dnorm(value, mean = mu[i], sd = sigma[i])})
+  type <- which.max(densities)
+  if (type == 1) {
+    return("buzz")
+  } else if (type == 2) {
+    return("regular")
+  } else {
+    return("long")
+  }
+}
+
+#' assign types based on logICIms values 
+ICIpirotta$type <- sapply(ICIpirotta$logICIms, assign_type)
+ICIpirotta$Nb <- ifelse(ICIpirotta$type == "buzz", 1, 0) 
+ICIpirotta$Nclicks <- 1 
+#' BPM 
+ICIpirottamin <- aggregate(Nb ~ POD + ChunkEnd + date + hour + day + month
+                           + datehours + Station + season, FUN="sum", data = ICIpirotta)
+ICIpirottamins <- aggregate(Nclicks ~ POD + ChunkEnd + date + hour + day + month
+                            + datehours + Station + season, FUN="sum", data = ICIpirotta)
+ICIpirottamin$Nclicks <- ICIpirottamins$Nclicks
+ICIpirottamins <- aggregate(TrainN ~ POD + ChunkEnd + date + hour + day + month
+                            + datehours + Station + season, FUN=function(x) length(unique(x)), data = ICIpirotta)
+ICIpirottamin$TrainN <- ICIpirottamins$TrainN
+# number of buzzes per train and minute
+ICIpirottaminss <- aggregate(Nb ~ POD + ChunkEnd + date + hour + day + month
+                             + datehours + Station + season + TrainN, FUN="sum", data = ICIpirotta)
+
+#
+ICIpirottamin$BPM <- ifelse(ICIpirottamin$Nb >= 1, 1, 0)
+ICIpirottamin$DPM <- 1 
+
+rm(ICIpirottamins)
+ICIpirottamin$Nbrate <- round(ICIpirottamin$Nb/ICIpirottamin$Nclicks*100, 2)
+ICIpirottamin$Nb_train <- round(ICIpirottamin$Nb/ICIpirottamin$TrainN, 2)
+ICIpirottamin$BPMrate <- round(ICIpirottamin$BPM/ICIpirottamin$DPM*100, 2)
+
+#' BPM per hour and BPH 
+ICIpirottahour <- aggregate(BPM ~ POD + datehours + date + month + day +
+                              hour + Station + season, FUN="sum", data = ICIpirottamin)
+ICIpirottahour$ChunkEnd <- as.POSIXct(ICIpirottahour$datehours, 
+                                      format = "%Y-%m-%d %H", tz = "UTC")
+ICIpirottahours <- aggregate(Nb ~ POD + datehours + date + month + day + 
+                               hour + Station + season, FUN="sum", data = ICIpirottamin)
+ICIpirottahour$Nb <- ICIpirottahours$Nb
+ICIpirottahours <- aggregate(Nclicks ~ POD + datehours + date + month + day + 
+                               hour + Station + season, FUN="sum", data = ICIpirottamin)
+ICIpirottahour$Nclicks <- ICIpirottahours$Nclicks
+ICIpirottahours <- aggregate(DPM ~ POD + datehours + date + month + day + 
+                               hour + Station + season, FUN="sum", data = ICIpirottamin)
+ICIpirottahour$DPM <- ICIpirottahours$DPM
+ICIpirottahours <- aggregate(TrainN ~ POD + datehours + date + month + day + 
+                               hour + Station + season, FUN=function(x) length(unique(x)), data = ICIpirotta)
+ICIpirottahour$TrainN <- ICIpirottahours$TrainN
+rm(ICIpirottahours)
+
+ICIpirottahour$BPH <- ifelse(ICIpirottahour$BPM >= 1, 1, 0)
+ICIpirottahour$DPH <- 1 
+
+ICIpirottahour$BPMrate <- round(ICIpirottahour$BPM/ICIpirottahour$DPM*100, 2)
+ICIpirottahour$BPMratio <- round(ICIpirottahour$BPM/ICIpirottahour$DPM, 2)
+ICIpirottahour$Nbrate <- round(ICIpirottahour$Nb/ICIpirottahour$Nclicks*100, 2)
+ICIpirottahour$Nb_train <- round(ICIpirottahour$Nb/ICIpirottahour$TrainN, 2)
+
+#' BPH per day 
+ICIpirottaday <- aggregate(BPM ~ POD + date + month + day + Station + season, FUN="sum", 
+                           data = ICIpirottahour)
+ICIpirottadays <- aggregate(DPM ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICIpirottahour)
+ICIpirottaday$DPM <- ICIpirottadays$DPM
+ICIpirottadays <- aggregate(BPH ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICIpirottahour)
+ICIpirottaday$BPH <- ICIpirottadays$BPH
+ICIpirottadays <- aggregate(DPH ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICIpirottahour)
+ICIpirottaday$DPH <- ICIpirottadays$DPH
+ICIpirottadays <- aggregate(Nb ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICIpirottahour)
+ICIpirottaday$Nb <- ICIpirottadays$Nb
+ICIpirottadays <- aggregate(Nclicks ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICIpirottahour)
+ICIpirottaday$Nclicks <- ICIpirottadays$Nclicks
+ICIpirottadays <- aggregate(TrainN ~ POD + date + month + day + Station + season, FUN=function(x) length(unique(x)), 
+                            data = ICIpirotta)
+ICIpirottaday$TrainN <- ICIpirottadays$TrainN
+rm(ICIpirottadays)
+
+ICIpirottaday$BPMrate <- round(ICIpirottaday$BPM/ICIpirottaday$DPM*100, 2)
+ICIpirottaday$BPMratio <- round(ICIpirottaday$BPM/ICIpirottaday$DPM, 2)
+ICIpirottaday$Nbrate <- round(ICIpirottaday$Nb/ICIpirottaday$Nclicks*100, 2)
+ICIpirottaday$Nb_train <- round(ICIpirottaday$Nb/ICIpirottaday$TrainN, 2)
+
+#' 10 minute division 
+ICIpirotta <- ICIpirotta %>%
+  mutate(
+    timeframe10min = floor_date(ChunkEnd, unit = "10 minutes"))
+
+ICIpirotta10min <- aggregate(Nb ~ POD + timeframe10min + date + hour + day + month
+                             + datehours + Station + season, FUN="sum", data = ICIpirotta)
+ICIpirotta10min$BP10M <- ifelse(ICIpirotta10min$Nb >= 1, 1, 0)
+ICIpirotta10min$DP10M <- 1 
+
+#' BP10M per hour  
+ICIpirottahours <- aggregate(BP10M ~ POD + datehours + date + month + day +
+                               hour + Station + season, FUN="sum", data = ICIpirotta10min)
+ICIpirottahour$BP10M <- ICIpirottahours$BP10M 
+ICIpirottahours <- aggregate(DP10M ~ POD + datehours + date + month + day +
+                               hour + Station + season, FUN="sum", data = ICIpirotta10min)
+ICIpirottahour$DP10M <- ICIpirottahours$DP10M 
+rm(ICIpirottahours)
+ICIpirottahour$BP10Mrate <- round(ICIpirottahour$BP10M/ICIpirottahour$DP10M*100, 2)
+ICIpirottahour$BP10Mratio <- round(ICIpirottahour$BP10M/ICIpirottahour$DP10M, 2)
+
+#' BP10M per day 
+ICIpirottadays <- aggregate(BP10M ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICIpirottahour)
+ICIpirottaday$BP10M <- ICIpirottadays$BP10M
+ICIpirottadays <- aggregate(DP10M ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICIpirottahour)
+ICIpirottaday$DP10M <- ICIpirottadays$DP10M
+rm(ICIpirottadays)
+ICIpirottaday$BP10Mrate <- round(ICIpirottaday$BP10M/ICIpirottaday$DP10M*100, 2)
+ICIpirottaday$BP10Mratio <- round(ICIpirottaday$BP10M/ICIpirottaday$DP10M, 2)
+
+# 5.1.1. General patterns in Pirotta --------------------------------------
+
+#' percentage foraging/detection 
+ICIpirottaday$percentage <- (ICIpirottaday$BPH/ICIpirottaday$DPH)*100
+# Calculate monthly foraging percentage BPHrate per day per location
+monthlyforagingpirotta <- ICIpirottaday %>%
+  group_by(Station, month) %>%                   # Group by month and location
+  summarise(percentagemonth = mean(percentage, na.rm = TRUE), .groups = 'drop')
+# monthly BPM rate per hour per location
+monthlyforagingpirotta <- ICIpirottahour %>%
+  group_by(Station, month) %>%                   # Group by month and location
+  summarise(percentagemonth = mean(BPMrate, na.rm = TRUE), .groups = 'drop')
+
+ggplot(monthlyforagingpirotta, aes(x = as.factor(month), y = percentagemonth, fill = Station)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = round(percentagemonth)),  
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5) +
+  labs(title = "Percentage per Month (method Pirotta et al 2013)",
+       x = "Month",
+       y = "Percentage foraging/detection (%)") +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  facet_wrap(~Station)
+
+ggplot(ICIpirottahour, aes(x = as.factor(month), y = BPMrate)) + 
+  stat_boxplot(geom = "errorbar", # Error bars
+               width = 0.25) +    # Bars width
+  geom_boxplot() + 
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red") +
+  facet_wrap(~Station) + 
+  xlab("Month") +  
+  ylab("hourly BPM rate")   
+
+
+ggplot(ICIpirottahour, aes(x = as.factor(Station), y = BPMrate)) + 
+  stat_boxplot(geom = "errorbar", # Error bars
+               width = 0.25) +    # Bars width
+  geom_boxplot() + 
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red") +
+  ylab("hourly BPM rate")
+
+ggplot(data = ICIpirottaday) + 
+  geom_point(aes(x= date, y = percentage, colour = factor(Station))) +
+  geom_line(aes(x= date, y = percentage, colour = factor(Station))) + 
+  theme_bw() + 
+  theme(axis.title = element_text(size = 16),
+        axis.title.y = element_blank(),
+        axis.text = element_text(size = 16),
+        legend.title = element_blank()) +
+  labs(y = "percentage per date") 
+
+ggplot(data = ICIpirottahour) + 
+  geom_col(aes(x = as.factor(month), y = BPM, fill = factor(Station)))+ 
+  theme_bw() +
+  facet_wrap(~Station) + 
+  theme(axis.title = element_text(size = 10),
+        axis.text = element_text(size = 10),
+        axis.title.x = element_blank()) +
+  labs(y = "BPM per hour", x = "months")
+
+
+mean(ICIpirottamin$BPMrate) #34.43% 
+mean(ICIpirottahour$BPMrate) #25.64% 
+mean(ICIpirottaday$BPMrate) #30.22%
+
+# total Number of BPM / DPM = 13440/39037*100 = 34.43%
+# total Number of BPH / DPH = 3523/6527*100 = 53.98%
+
+# average buzz ICI 
+test <- ICIpirotta[ICIpirotta$Nb == 1,]
+mean(test$ICIms) # mean buzz ICI for pirotta is 2.21 ms 
+
+#per Station 
+filtertest <- ICIpirottaday[ICIpirottaday$Station == "bpns-Faulbaums", ]
+mean(filtertest$BPMrate) #37.76% min 27.25% hour 33.30% day   
+filtertest <- ICIpirottaday[ICIpirottaday$Station == "bpns-Reefballs belwind", ]
+mean(filtertest$BPMrate) #30.10% min 24.11% hour 27.15% day 
+
+# 5.2. Foraging according to Nuuttila -------------------------------------
+
+ICInuuttila <- ICI
+#remove outliers 
+ICInuuttila <- subset(ICInuuttila, ICInuuttila$ICIms < 250) #3441 rows less
+
+#define buzzes 
+ICInuuttila[ICInuuttila$ICIms<10 , "Nb"] <- 1
+ICInuuttila[ICInuuttila$ICIms>=10 , "Nb"] <- 0
+length(which(ICInuuttila$Nb != 0)) #foraging or social buzzes 2904718
+length(which(ICInuuttila$Nb == 0)) #regular buzzes 2973969
+ICInuuttila$Nclicks <- 1
+# 2904718 Nb/5878687 Ntot rows 49.41% compared to 35.56% in pirotta 
+
+#number of foraging buzzes per train per minute 
+ICInuuttilamin <- aggregate(Nb ~ POD + ChunkEnd + date + hour + day + month
+                            + datehours + Station + TrainN + season, FUN="sum", data = ICInuuttila)
+ICInuuttilaminss <- aggregate(Nclicks ~ POD + ChunkEnd + date + hour + day + month
+                            + datehours + Station + TrainN + season, FUN="sum", data = ICInuuttila)
+ICInuuttilamin$Nclicks <- ICInuuttilaminss$Nclicks
+
+ICInuuttilamins <- aggregate(Nb ~ POD + ChunkEnd + date + hour + day + month
+                             + datehours + Station + season, FUN="sum", data = ICInuuttilamin)
+ICInuuttilaminss <- aggregate(Nclicks ~ POD + ChunkEnd + date + hour + day + month
+                              + datehours + Station + season, FUN="sum", data = ICInuuttilamin)
+ICInuuttilamins$Nclicks <- ICInuuttilaminss$Nclicks
+ICInuuttilaminss <- aggregate(TrainN ~ POD + ChunkEnd + date + hour + day + month
+                             + datehours + Station + season, FUN=function(x) length(unique(x)), data = ICInuuttilamin)
+ICInuuttilamins$TrainN <- ICInuuttilaminss$TrainN
+
+rm(ICInuuttilaminss)
+
+ICInuuttilamins$Nb_train <- round(ICInuuttilamins$Nb/ICInuuttilamins$TrainN, 2)
+ICInuuttilamins$Nbrate <- round(ICInuuttilamins$Nb/ICInuuttilamins$Nclicks*100, 2)
+ICInuuttilamins$BPM <- ifelse(ICInuuttilamins$Nb >= 1, 1, 0)
+ICInuuttilamins$DPM <- 1 
+ICInuuttilamins$BPMrate <- round(ICInuuttilamins$BPM/ICInuuttilamins$DPM*100, 2)
+
+
+# number of trains per ICI 
+ICInuuttilatrain <- aggregate(ICIms ~ POD + ChunkEnd + date + hour + day + month
+                              + datehours + Station + TrainN + season, FUN="mean", data = ICInuuttila)
+ICInuuttilatrain$type <- ifelse(ICInuuttilatrain$ICIms <10, "foraging", "travelling")
+
+ICInuuttilatrains <- aggregate(Clicks.s ~ POD + ChunkEnd + date + hour + day + month
+                               + datehours + Station + TrainN + season, FUN="mean", data = ICInuuttila)
+ICInuuttilatrain$Clicks.s <- ICInuuttilatrains$Clicks.s
+rm(ICInuuttilatrains)
+
+ggplot(ICInuuttilatrain, aes(x = ICIms)) +
+  geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of ICI",
+       x = "ICIms",
+       y = "Frequency") +
+  theme_minimal() 
+
+ggplot(ICInuuttilatrain, aes(x = type, y = Clicks.s)) + 
+  geom_boxplot()
+
+#' BPM per hour and BPH 
+ICInuuttilahour <- aggregate(BPM ~ POD + datehours + date + month + day +
+                               hour + Station + season, FUN="sum", data = ICInuuttilamins)
+ICInuuttilahour$ChunkEnd <- as.POSIXct(ICInuuttilahour$datehours, 
+                                       format = "%Y-%m-%d %H", tz = "UTC")
+ICInuuttilahours <- aggregate(DPM ~ POD + datehours + date + month + day + 
+                                hour + Station + season, FUN="sum", data = ICInuuttilamins)
+ICInuuttilahour$DPM <- ICInuuttilahours$DPM
+ICInuuttilahours <- aggregate(Nb ~ POD + datehours + date + month + day + 
+                                hour + Station + season, FUN="sum", data = ICInuuttilamins)
+ICInuuttilahour$Nb <- ICInuuttilahours$Nb
+ICInuuttilahours <- aggregate(Nclicks ~ POD + datehours + date + month + day + 
+                                hour + Station + season, FUN="sum", data = ICInuuttilamins)
+ICInuuttilahour$Nclicks <- ICInuuttilahours$Nclicks
+ICInuuttilahours <- aggregate(TrainN ~ POD + datehours + date + month + day + 
+                                hour + Station + season, FUN=function(x) length(unique(x)), data = ICInuuttilamin)
+ICInuuttilahour$TrainN <- ICInuuttilahours$TrainN 
+rm(ICInuuttilahours)
+
+ICInuuttilahour$BPH <- ifelse(ICInuuttilahour$BPM >= 1, 1, 0)
+ICInuuttilahour$DPH <- 1 
+ICInuuttilahour$BPMrate <- round(ICInuuttilahour$BPM/ICInuuttilahour$DPM*100, 2)
+ICInuuttilahour$BPMratio <- round(ICInuuttilahour$BPM/ICInuuttilahour$DPM, 2)
+ICInuuttilahour$Nbrate <- round(ICInuuttilahour$Nb/ICInuuttilahour$Nclicks*100, 2)
+ICInuuttilahour$Nb_train <- round(ICInuuttilahour$Nb/ICInuuttilahour$TrainN, 2)
+
+#' BPH per day 
+ICInuuttiladay <- aggregate(BPM ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICInuuttilahour)
+ICInuuttiladays <- aggregate(DPM ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICInuuttilahour)
+ICInuuttiladay$DPM <- ICInuuttiladays$DPM
+ICInuuttiladays <- aggregate(BPH ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICInuuttilahour)
+ICInuuttiladay$BPH <- ICInuuttiladays$BPH
+ICInuuttiladays <- aggregate(DPH ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICInuuttilahour)
+ICInuuttiladay$DPH <- ICInuuttiladays$DPH
+ICInuuttiladays <- aggregate(Nb ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICInuuttilahour)
+ICInuuttiladay$Nb <- ICInuuttiladays$Nb
+ICInuuttiladays <- aggregate(Nclicks ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICInuuttilahour)
+ICInuuttiladay$Nclicks <- ICInuuttiladays$Nclicks
+ICInuuttiladays <- aggregate(TrainN ~ POD + date + month + day + Station + season, FUN=function(x) length(unique(x)), 
+                             data = ICInuuttilamin)
+ICInuuttiladay$TrainN <- ICInuuttiladays$TrainN
+
+rm(ICInuuttiladays)
+
+ICInuuttiladay$BPMrate <- round(ICInuuttiladay$BPM/ICInuuttiladay$DPM*100, 2)
+ICInuuttiladay$BPMratio <- round(ICInuuttiladay$BPM/ICInuuttiladay$DPM, 2)
+ICInuuttiladay$Nbrate <- round(ICInuuttiladay$Nb/ICInuuttiladay$Nclicks*100, 2)
+ICInuuttiladay$Nb_train <- round(ICInuuttiladay$Nb/ICInuuttiladay$TrainN, 2)
+
+#' 10 minute division 
+ICInuuttila <- ICInuuttila %>%
+  mutate(
+    timeframe10min = floor_date(ChunkEnd, unit = "10 minutes"))
+
+ICInuuttila10min <- aggregate(Nb ~ POD + timeframe10min + date + hour + day + month
+                              + datehours + Station + season, FUN="sum", data = ICInuuttila)
+ICInuuttila10min$BP10M <- ifelse(ICInuuttila10min$Nb >= 1, 1, 0)
+ICInuuttila10min$DP10M <- 1 
+
+#' BP10M per hour and BPH 
+ICInuuttilahours <- aggregate(BP10M ~ POD + datehours + date + month + day +
+                                hour + Station + season, FUN="sum", data = ICInuuttila10min)
+ICInuuttilahour$BP10M <- ICInuuttilahours$BP10M 
+ICInuuttilahours <- aggregate(DP10M ~ POD + datehours + date + month + day +
+                                hour + Station + season, FUN="sum", data = ICInuuttila10min)
+ICInuuttilahour$DP10M <- ICInuuttilahours$DP10M 
+rm(ICInuuttilahours)
+ICInuuttilahour$BP10Mrate <- round(ICInuuttilahour$BP10M/ICInuuttilahour$DP10M*100, 2)
+ICInuuttilahour$BP10Mratio <- round(ICInuuttilahour$BP10M/ICInuuttilahour$DP10M, 2)
+
+#' BP10M per day 
+ICInuuttiladays <- aggregate(BP10M ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICInuuttilahour)
+ICInuuttiladay$BP10M <- ICInuuttiladays$BP10M
+ICInuuttiladays <- aggregate(DP10M ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICInuuttilahour)
+ICInuuttiladay$DP10M <- ICInuuttiladays$DP10M
+rm(ICInuuttiladays)
+ICInuuttiladay$BP10Mrate <- round(ICInuuttiladay$BP10M/ICInuuttiladay$DP10M*100, 2)
+ICInuuttiladay$BP10Mratio <- round(ICInuuttiladay$BP10M/ICInuuttiladay$DP10M, 2)
+
+# 5.2.1. General patterns in Nuuttila -------------------------------------
+
+#' percentage foraging/detection 
+ICInuuttiladay$percentage <- (ICInuuttiladay$BPH/ICInuuttiladay$DPH)*100
+# Calculate monthly foraging percentage BPHrate per day per location
+monthlyforagingnuuttila <- ICInuuttiladay %>%
+  group_by(Station, month) %>%                   # Group by month and location
+  summarise(percentagemonth = mean(percentage, na.rm = TRUE), .groups = 'drop')
+# monthly BPM rate per hour per location
+monthlyforagingnuuttila <- ICInuuttilahour %>%
+  group_by(Station, month) %>%                   # Group by month and location
+  summarise(percentagemonth = mean(BPMrate, na.rm = TRUE), .groups = 'drop')
+
+ggplot(monthlyforagingnuuttila, aes(x = as.factor(month), y = percentagemonth, fill = Station)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = round(percentagemonth)),  
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5) +
+  labs(title = "Percentage per Month (method Nuuttila et al 2013)",
+       x = "Month",
+       y = "Percentage foraging/detection (%)") +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  facet_wrap(~Station)
+
+ggplot(ICInuuttilahour, aes(x = as.factor(month), y = BPMrate)) + 
+  stat_boxplot(geom = "errorbar", # Error bars
+               width = 0.25) +    # Bars width
+  geom_boxplot() + 
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red") +
+  facet_wrap(~Station) + 
+  xlab("Month") +  
+  ylab("hourly BPM rate")   
+
+
+ggplot(ICInuuttilahour, aes(x = as.factor(Station), y = BPMrate)) + 
+  stat_boxplot(geom = "errorbar", # Error bars
+               width = 0.25) +    # Bars width
+  geom_boxplot() + 
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red") +
+  ylab("hourly BPM rate")
+
+ggplot(data = ICInuuttiladay) + 
+  geom_point(aes(x= date, y = percentage, colour = factor(Station))) +
+  geom_line(aes(x= date, y = percentage, colour = factor(Station))) + 
+  theme_bw() + 
+  theme(axis.title = element_text(size = 16),
+        axis.title.y = element_blank(),
+        axis.text = element_text(size = 16),
+        legend.title = element_blank()) +
+  labs(y = "percentage per date") 
+
+ggplot(data = ICInuuttilahour) + 
+  geom_col(aes(x = as.factor(month), y = BPM, fill = factor(Station)))+ 
+  theme_bw() +
+  facet_wrap(~Station) + 
+  theme(axis.title = element_text(size = 10),
+        axis.text = element_text(size = 10),
+        axis.title.x = element_blank()) +
+  labs(y = "BPM per hour", x = "months")
+
+
+mean(ICInuuttilamins$BPMrate) #47.09% 
+mean(ICInuuttilahour$BPMrate) #38.78% 
+mean(ICInuuttiladay$BPMrate) #44.39%
+
+# total Number of BPM / DPM = 18380/39034*100 = 47.09%
+# total Number of BPH / DPH = 3523/6526*100 = 66.41%
+
+# average buzz ICI 
+test <- ICInuuttila[ICInuuttila$Nb == 1,]
+mean(test$ICIms) # mean buzz ICI for pirotta is 2.21 ms this is 3.33 
+
+#per Station 
+filtertest <- ICInuuttilamins[ICInuuttilamins$Station == "bpns-Faulbaums", ]
+mean(filtertest$BPMrate) #48.81% min 39.20% hour 45.69% day   
+filtertest <- ICInuuttilamins[ICInuuttilamins$Station == "bpns-Reefballs belwind", ]
+mean(filtertest$BPMrate) #44.84% min 38.38% hour 43.09% day 
+# 5.3. Foraging according to DeRuiter -------------------------------------
+ICIderuiter <- ICI
+#' max buzz click rate 
+ICIderuiter$Nb <- ifelse(ICIderuiter$Clicks.s > 125, "1", "0")
+length(which(ICIderuiter$Nb != 0)) 
+#2736463 Nb /5882128 Ntot 46.52% this is the one without 640 clicks/s filter 
+#2382301 Nb /5882128 Ntot 40.50% compared to 49.41% nuuttila and 35.56% pirotta
+ICIderuiter$Nb <- as.numeric(ICIderuiter$Nb)
+#' which means ICI (ms) between 1.6 and 8 ms 
+ICIderuiter$Nclicks <- 1
+#' BPM 
+ICIderuitermin <- aggregate(Nb ~ POD + ChunkEnd + date + hour + day + month
+                            + datehours + Station + season, FUN="sum", data = ICIderuiter)
+ICIderuitermins <- aggregate(Nclicks ~ POD + ChunkEnd + date + hour + day + month
+                             + datehours + Station + season, FUN="sum", data = ICIderuiter)
+ICIderuitermin$Nclicks <- ICIderuitermins$Nclicks
+ICIderuitermins <- aggregate(TrainN ~ POD + ChunkEnd + date + hour + day + month
+                             + datehours + Station + season, FUN=function(x) length(unique(x)), data = ICIderuiter)
+ICIderuitermin$TrainN <- ICIderuitermins$TrainN
+rm(ICIderuitermins)
+
+ICIderuitermin$BPM <- ifelse(ICIderuitermin$Nb >= 1, 1, 0)
+ICIderuitermin$DPM <- 1 
+
+ICIderuitermin$Nbrate <- round(ICIderuitermin$Nb/ICIderuitermin$Nclicks*100, 2)
+ICIderuitermin$Nb_train <- round(ICIderuitermin$Nb/ICIderuitermin$TrainN, 2)
+ICIderuitermin$BPMrate <- round(ICIderuitermin$BPM/ICIderuitermin$DPM*100, 2)
+
+
+#' BPM per hour and BPH 
+ICIderuiterhour <- aggregate(BPM ~ POD + datehours + date + month + day +
+                               hour + Station + season, FUN="sum", data = ICIderuitermin)
+ICIderuiterhour$ChunkEnd <- as.POSIXct(ICIderuiterhour$datehours, 
+                                       format = "%Y-%m-%d %H", tz = "UTC")
+ICIderuiterhours <- aggregate(DPM ~ POD + datehours + date + month + day + 
+                                hour + Station + season, FUN="sum", data = ICIderuitermin)
+ICIderuiterhour$DPM <- ICIderuiterhours$DPM
+ICIderuiterhours <- aggregate(Nb ~ POD + datehours + date + month + day + 
+                                hour + Station + season, FUN="sum", data = ICIderuitermin)
+ICIderuiterhour$Nb <- ICIderuiterhours$Nb
+ICIderuiterhours <- aggregate(Nclicks ~ POD + datehours + date + month + day + 
+                                hour + Station + season, FUN="sum", data = ICIderuitermin)
+ICIderuiterhour$Nclicks <- ICIderuiterhours$Nclicks
+ICIderuiterhours <- aggregate(TrainN ~ POD + datehours + date + month + day +
+                                hour + Station + season, FUN=function(x) length(unique(x)), data = ICIderuiter)
+ICIderuiterhour$TrainN <- ICIderuiterhours$TrainN
+rm(ICIderuiterhours)
+
+ICIderuiterhour$BPH <- ifelse(ICIderuiterhour$BPM >= 1, 1, 0)
+ICIderuiterhour$DPH <- 1 
+
+ICIderuiterhour$BPMrate <- round(ICIderuiterhour$BPM/ICIderuiterhour$DPM*100, 2)
+ICIderuiterhour$BPMratio <- round(ICIderuiterhour$BPM/ICIderuiterhour$DPM, 2)
+ICIderuiterhour$Nbrate <- round(ICIderuiterhour$Nb/ICIderuiterhour$Nclicks*100, 2)
+ICIderuiterhour$Nb_train <- round(ICIderuiterhour$Nb/ICIderuiterhour$TrainN, 2)
+
+#' BPH per day 
+ICIderuiterday <- aggregate(BPM ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICIderuiterhour)
+ICIderuiterdays <- aggregate(DPM ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICIderuiterhour)
+ICIderuiterday$DPM <- ICIderuiterdays$DPM
+ICIderuiterdays <- aggregate(BPH ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICIderuiterhour)
+ICIderuiterday$BPH <- ICIderuiterdays$BPH
+ICIderuiterdays <- aggregate(DPH ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICIderuiterhour)
+ICIderuiterday$DPH <- ICIderuiterdays$DPH
+ICIderuiterdays <- aggregate(Nb ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICIderuiterhour)
+ICIderuiterday$Nb <- ICIderuiterdays$Nb
+ICIderuiterdays <- aggregate(Nclicks ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICIderuiterhour)
+ICIderuiterday$Nclicks <- ICIderuiterdays$Nclicks
+ICIderuiterdays <- aggregate(TrainN ~ POD + date + month + day + Station + season, FUN=function(x) length(unique(x)), 
+                             data = ICIderuiter)
+ICIderuiterday$TrainN <- ICIderuiterdays$TrainN
+rm(ICIderuiterdays)
+
+ICIderuiterday$BPMrate <- round(ICIderuiterday$BPM/ICIderuiterday$DPM*100, 2)
+ICIderuiterday$BPMratio <- round(ICIderuiterday$BPM/ICIderuiterday$DPM, 2)
+ICIderuiterday$Nbrate <- round(ICIderuiterday$Nb/ICIderuiterday$Nclicks*100, 2)
+ICIderuiterday$Nb_train <- round(ICIderuiterday$Nb/ICIderuiterday$TrainN, 2)
+
+#' 10 minute division 
+ICIderuiter <- ICIderuiter %>%
+  mutate(
+    timeframe10min = floor_date(ChunkEnd, unit = "10 minutes"))
+
+ICIderuiter10min <- aggregate(Nb ~ POD + timeframe10min + date + hour + day + month
+                              + datehours + Station + season, FUN="sum", data = ICIderuiter)
+ICIderuiter10min$BP10M <- ifelse(ICIderuiter10min$Nb >= 1, 1, 0)
+ICIderuiter10min$DP10M <- 1 
+
+#' BP10M per hour and BPH 
+ICIderuiterhours <- aggregate(BP10M ~ POD + datehours + date + month + day +
+                                hour + Station + season, FUN="sum", data = ICIderuiter10min)
+ICIderuiterhour$BP10M <- ICIderuiterhours$BP10M 
+ICIderuiterhours <- aggregate(DP10M ~ POD + datehours + date + month + day +
+                                hour + Station + season, FUN="sum", data = ICIderuiter10min)
+ICIderuiterhour$DP10M <- ICIderuiterhours$DP10M 
+rm(ICIderuiterhours)
+ICIderuiterhour$BP10Mrate <- round(ICIderuiterhour$BP10M/ICIderuiterhour$DP10M*100, 2)
+ICIderuiterhour$BP10Mratio <- round(ICIderuiterhour$BP10M/ICIderuiterhour$DP10M, 2)
+
+#' BP10M per day 
+ICIderuiterdays <- aggregate(BP10M ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICIderuiterhour)
+ICIderuiterday$BP10M <- ICIderuiterdays$BP10M
+ICIderuiterdays <- aggregate(DP10M ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICIderuiterhour)
+ICIderuiterday$DP10M <- ICIderuiterdays$DP10M
+rm(ICIderuiterdays)
+ICIderuiterday$BP10Mrate <- round(ICIderuiterday$BP10M/ICIderuiterday$DP10M*100, 2)
+ICIderuiterday$BP10Mratio <- round(ICIderuiterday$BP10M/ICIderuiterday$DP10M, 2)
+
+# 5.3.1. General patterns in Deruiter -------------------------------------
+#' percentage foraging/detection 
+ICIderuiterday$percentage <- (ICIderuiterday$BPH/ICIderuiterday$DPH)*100
+# Calculate monthly foraging percentage BPHrate per day per location
+monthlyforagingderuiter <- ICIderuiterday %>%
+  group_by(Station, month) %>%                   # Group by month and location
+  summarise(percentagemonth = mean(percentage, na.rm = TRUE), .groups = 'drop')
+# monthly BPM rate per hour per location
+monthlyforagingderuiter <- ICIderuiterhour %>%
+  group_by(Station, month) %>%                   # Group by month and location
+  summarise(percentagemonth = mean(BPMrate, na.rm = TRUE), .groups = 'drop')
+
+ggplot(monthlyforagingderuiter, aes(x = as.factor(month), y = percentagemonth, fill = Station)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = round(percentagemonth)),  
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5) +
+  labs(title = "Percentage per Month (method Pirotta et al 2013)",
+       x = "Month",
+       y = "Percentage foraging/detection (%)") +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  facet_wrap(~Station)
+
+ggplot(ICIderuiterhour, aes(x = as.factor(month), y = BPMrate)) + 
+  stat_boxplot(geom = "errorbar", # Error bars
+               width = 0.25) +    # Bars width
+  geom_boxplot() + 
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red") +
+  facet_wrap(~Station) + 
+  xlab("Month") +  
+  ylab("hourly BPM rate")   
+
+
+ggplot(ICIderuiterhour, aes(x = as.factor(Station), y = BPMrate)) + 
+  stat_boxplot(geom = "errorbar", # Error bars
+               width = 0.25) +    # Bars width
+  geom_boxplot() + 
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red") +
+  ylab("hourly BPM rate")
+
+ggplot(data = ICIderuiterday) + 
+  geom_point(aes(x= date, y = percentage, colour = factor(Station))) +
+  geom_line(aes(x= date, y = percentage, colour = factor(Station))) + 
+  theme_bw() + 
+  theme(axis.title = element_text(size = 16),
+        axis.title.y = element_blank(),
+        axis.text = element_text(size = 16),
+        legend.title = element_blank()) +
+  labs(y = "percentage per date") 
+
+ggplot(data = ICIderuiterhour) + 
+  geom_col(aes(x = as.factor(month), y = BPM, fill = factor(Station)))+ 
+  theme_bw() +
+  facet_wrap(~Station) + 
+  theme(axis.title = element_text(size = 10),
+        axis.text = element_text(size = 10),
+        axis.title.x = element_blank()) +
+  labs(y = "BPM per hour", x = "months")
+
+
+mean(ICIderuitermin$BPMrate) #43.99% 
+mean(ICIderuiterhour$BPMrate) #35.34% 
+mean(ICIderuiterday$BPMrate) #40.91%
+
+# total Number of BPM / DPM = 17173/39037*100 = 43.99%
+# total Number of BPH / DPH = 4145/6527*100 = 63.51%
+
+# average buzz ICI 
+test <- ICIderuiter[ICIderuiter$Nb == 1,]
+mean(test$ICIms) # mean buzz ICI for deruiter is 3.22 ms or 2.98 ms 
+
+#per Station 
+filtertest <- ICIderuiterday[ICIderuiterday$Station == "bpns-Faulbaums", ]
+mean(filtertest$BPMrate) #45.84% min 35.62% hour 42.12% day   
+filtertest <- ICIderuiterday[ICIderuiterday$Station == "bpns-Reefballs belwind", ]
+mean(filtertest$BPMrate) #41.59% min 35.08% hour 39.71% day 
+
+# 5.4. Foraging according to Schaffeld ------------------------------------
+ICIschaffeld <- ICI
+
+ICIschaffeld <- ICIschaffeld %>%
+  mutate(
+    timeframe10min = floor_date(ChunkEnd, unit = "10 minutes"))
+
+ICIschaffeld <- ICIschaffeld %>%
+  group_by(Station, timeframe10min, POD) %>%
+  mutate(
+    sudden_decrease = ICIms < lag(ICIms, default = first(ICIms)) * (2/3) & ICIms < 10,  # Sudden decrease condition of 2/3
+    count_below_10 = sum(ICIms < 10),  # Count of ICIms below 10 ms
+    fpp10min = ifelse(
+      sudden_decrease & count_below_10 >= 5 
+      ,
+      1, 0)) %>%
+  ungroup() %>%
+  select(-sudden_decrease, -count_below_10)
+
+ICIschaffeld10min <- aggregate(fpp10min ~ POD + timeframe10min + date + hour + day + month
+                               + datehours + Station + season, FUN="sum", data = ICIschaffeld)
+ICIschaffeld10min$BP10M <- ifelse(ICIschaffeld10min$fpp10min >= 1, 1, 0)
+ICIschaffeld10min$DP10M <- 1 
+
+ICIschaffeld10min$BP10Mrate <- round(ICIschaffeld10min$BP10M/ICIschaffeld10min$DP10M*100, 2)
+ICIschaffeld10min$BP10Mratio <- round(ICIschaffeld10min$BP10M/ICIschaffeld10min$DP10M, 2)
+
+#' BP10M per hour and BPH 
+ICIschaffeldhour <- aggregate(BP10M ~ POD + datehours + date + month + day +
+                                hour + Station + season, FUN="sum", data = ICIschaffeld10min)
+ICIschaffeldhour$ChunkEnd <- as.POSIXct(ICIschaffeldhour$datehours, 
+                                        format = "%Y-%m-%d %H", tz = "UTC")
+ICIschaffeldhours <- aggregate(DP10M ~ POD + datehours + date + month + day + 
+                                 hour + Station + season, FUN="sum", data = ICIschaffeld10min)
+ICIschaffeldhour$DP10M <- ICIschaffeldhours$DP10M 
+rm(ICIschaffeldhours)
+ICIschaffeldhour$BPH <- ifelse(ICIschaffeldhour$BP10M >= 1, 1, 0)
+ICIschaffeldhour$DPH <- 1 
+
+ICIschaffeldhour$BP10Mrate <- round(ICIschaffeldhour$BP10M/ICIschaffeldhour$DP10M*100, 2)
+ICIschaffeldhour$BP10Mratio <- round(ICIschaffeldhour$BP10M/ICIschaffeldhour$DP10M, 2)
+
+ICIschaffeldhour$Nb <- NA
+ICIschaffeldhour$Nclicks <- NA
+ICIschaffeldhour$Nbrate <- NA
+ICIschaffeldhour$Nb_train <- NA
+ICIschaffeldhour$TrainN <- NA
+ICIschaffeldhour$BPM <- NA
+ICIschaffeldhour$DPM <- NA
+ICIschaffeldhour$BPMrate <- NA
+ICIschaffeldhour$BPMratio <- NA
+
+#' BPH per day 
+ICIschaffeldday <- aggregate(BPH ~ POD + date + month + day + Station + season, FUN="sum", 
+                             data = ICIschaffeldhour)
+ICIschaffelddays <- aggregate(BP10M ~ POD + date + month + day + Station + season, FUN="sum", 
+                              data = ICIschaffeldhour)
+ICIschaffeldday$BP10M <- ICIschaffelddays$BP10M
+ICIschaffelddays <- aggregate(DPH ~ POD + date + month + day + Station + season, FUN="sum", 
+                              data = ICIschaffeldhour)
+ICIschaffeldday$DPH <- ICIschaffelddays$DPH
+ICIschaffelddays <- aggregate(DP10M ~ POD + date + month + day + Station + season, FUN="sum", 
+                              data = ICIschaffeldhour)
+ICIschaffeldday$DP10M <- ICIschaffelddays$DP10M
+rm(ICIschaffelddays)
+
+ICIschaffeldday$BP10Mrate <- round(ICIschaffeldday$BP10M/ICIschaffeldday$DP10M*100, 2)
+ICIschaffeldday$BP10Mratio <- round(ICIschaffeldday$BP10M/ICIschaffeldday$DP10M, 2)
+
+#13796 porpoise positive 10 minutes of which 5594 foraging pp10min 40.55% 
+
+ICIschaffeldday$Nb <- NA
+ICIschaffeldday$Nclicks <- NA
+ICIschaffeldday$Nbrate <- NA
+ICIschaffeldday$Nb_train <- NA
+ICIschaffeldday$TrainN <- NA
+ICIschaffeldday$BPM <- NA
+ICIschaffeldday$DPM <- NA
+ICIschaffeldday$BPMrate <- NA
+ICIschaffeldday$BPMratio <- NA
+
+library(data.table)
+fwrite(ICIschaffeldhour, "ICIschaffeldhour.csv")
+fwrite(ICIschaffeldday, "ICIschaffeldday.csv")
+
+# 5.4.1. General patterns in Schaffeld ------------------------------------
+ICIschaffeldday$percentage <- (ICIschaffeldday$BPH/ICIschaffeldday$DPH)*100
+
+# Calculate monthly foraging percentage BPHrate per day per location
+monthlyforagingschaffeld <- ICIschaffeldday %>%
+  group_by(Station, month) %>%                   # Group by month and location
+  summarise(percentagemonth = mean(percentage, na.rm = TRUE), .groups = 'drop')
+# monthly BPM rate per hour per location
+monthlyforagingschaffeld <- ICIschaffeldhour %>%
+  group_by(Station, month) %>%                   # Group by month and location
+  summarise(percentagemonth = mean(BP10Mrate, na.rm = TRUE), .groups = 'drop')
+
+ggplot(monthlyforagingschaffeld, aes(x = as.factor(month), y = percentagemonth, fill = Station)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = round(percentagemonth)),  
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5) +
+  labs(title = "Percentage per Month (method Schaffeld et al 2016)",
+       x = "Month",
+       y = "Percentage foraging/detection (%)") +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  facet_wrap(~Station)
+
+ggplot(ICIschaffeldhour, aes(x = as.factor(month), y = BP10Mrate)) + 
+  stat_boxplot(geom = "errorbar", # Error bars
+               width = 0.25) +    # Bars width
+  geom_boxplot() + 
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red") +
+  facet_wrap(~Station) + 
+  xlab("Month") +  
+  ylab("hourly BP10M rate")   
+
+
+ggplot(ICIschaffeldhour, aes(x = as.factor(Station), y = BP10Mrate)) + 
+  stat_boxplot(geom = "errorbar", # Error bars
+               width = 0.25) +    # Bars width
+  geom_boxplot() + 
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red") +
+  ylab("hourly BP10M rate")
+
+ggplot(data = ICIschaffeldday) + 
+  geom_point(aes(x= date, y = percentage, colour = factor(Station))) +
+  geom_line(aes(x= date, y = percentage, colour = factor(Station))) + 
+  theme_bw() + 
+  theme(axis.title = element_text(size = 16),
+        axis.title.y = element_blank(),
+        axis.text = element_text(size = 16),
+        legend.title = element_blank()) +
+  labs(y = "percentage per date") 
+
+ggplot(data = ICIschaffeldhour) + 
+  geom_col(aes(x = as.factor(month), y = BP10M, fill = factor(Station)))+ 
+  theme_bw() +
+  facet_wrap(~Station) + 
+  theme(axis.title = element_text(size = 10),
+        axis.text = element_text(size = 10),
+        axis.title.x = element_blank()) +
+  labs(y = "BP10M per hour", x = "months")
+
+mean(ICIschaffeldhour$BP10Mrate) #32.65% 
+mean(ICIschaffeldday$BP10Mrate) #34.61%
+length(which(ICIschaffeldday$BPH > 0))
+
+
+# total Number of BP10M / DP10M = 5594/13796*100 = 40.55%
+#13796 porpoise positive 10 minutes of which 5594 foraging pp10min 40.55% 
+# total Number of BPH / DPH = 3142/6527*100 = 48.14%
+
+#per Station 
+filtertest <- ICIschaffeldday[ICIschaffeldday$Station == "bpns-Faulbaums", ]
+mean(filtertest$BP10Mrate) #45.50% min 36.39% hour 38.09% day   
+filtertest <- ICIschaffeldday[ICIschaffeldday$Station == "bpns-Reefballs belwind", ]
+mean(filtertest$BP10Mrate) #35.55% min 29.11% hour 31.14% day 
+
+
+
+
+# 5.5. Foraging SBFI ------------------------------------------------------
+ICISBFI <- ICI
+ICISBFI <- ICISBFI %>%
+  arrange(ChunkEnd, Station, POD) %>%
+  group_by(ChunkEnd, Station, POD) %>%
+  mutate(
+    buzz_click = ICIms >= 1.25 & ICIms <= 6.65,
+    
+    # search_before_buzz using coin-flip method (TRUE for all rows with Clicks.s < 200)
+    search_before_buzz = {
+      sb <- rep(FALSE, n())
+      r <- rle(buzz_click) 
+      start <- cumsum(c(1, head(r$lengths, -1))) # positions of when every new buzz (false or true) starts
+      end   <- cumsum(r$lengths) # end position is the same as how many T or F are counted
+      
+      for(i in which(r$values)) {
+        buzz_start <- start[i] 
+        if(buzz_start > 1) { # buzz cannot be at position one of the minute because then there can be no search before
+          potential_search_rows <- 1:(buzz_start - 1)
+          sb[potential_search_rows] <- Clicks.s[potential_search_rows] < 150 | sb[potential_search_rows]
+          }}
+      sb
+      },
+    
+    # longest count of TRUE buzz clicks in the whole minute 
+    max_buzz_run = {
+      r <- rle(buzz_click)
+      if(any(r$values)) max(r$lengths[r$values]) else 0
+    },
+    
+    # Buzz click if buzz and search before buzz present 
+    Nb = as.integer(max_buzz_run >= 3 & any(search_before_buzz))
+  ) %>%
+  ungroup()
+
+# Example: filter for chunk and station
+chunk_data <- ICISBFI %>%
+  filter(
+    ChunkEnd == as.POSIXct("2023-09-04 08:05", tz = "UTC"),
+    Station == "bpns-Reefballs belwind" 
+  ) %>%
+  mutate(row_id = row_number())
+
+# Plot ICIms with buzz and search_before_buzz highlighted
+ggplot(chunk_data, aes(x = row_id, y = ICIms)) +
+  geom_line(color = "gray") +
+  geom_point(aes(color = buzz_click), size = 2) +
+  geom_point(aes(shape = search_before_buzz), size = 1, color = "red") +
+  scale_color_manual(values = c("FALSE" = "black", "TRUE" = "blue")) +
+  scale_shape_manual(values = c("FALSE" = NA, "TRUE" = 8)) +  # 8 = star for search
+  labs(
+    title = "Identification of SBFI foraging positive minute",
+    subtitle = "Datetime: 2023-09-04 08:05 | Station: Belwind",
+    x = "Row (Sequential Click Index)",
+    y = "ICI (ms)",
+    color = "Buzz Click",
+    shape = "Pre-Buzz Search"
+  ) +
+  theme_minimal()
+
+nrow(ICISBFI)
+mean(ICISBFI$Nb == ICIpirotta$Nb, na.rm = TRUE) * 100
+ICISBFI$Nclicks <- 1 
+#' BPM
+ICISBFImin <- aggregate(Nb ~ POD + ChunkEnd + date + hour + day + month
+                           + datehours + Station + season, FUN="sum", data = ICISBFI)
+ICISBFImins <- aggregate(Nclicks ~ POD + ChunkEnd + date + hour + day + month
+                            + datehours + Station + season, FUN="sum", data = ICISBFI)
+ICISBFImin$Nclicks <- ICISBFImins$Nclicks
+ICISBFImins <- aggregate(TrainN ~ POD + ChunkEnd + date + hour + day + month
+                            + datehours + Station + season, FUN=function(x) length(unique(x)), data = ICISBFI)
+ICISBFImin$TrainN <- ICISBFImins$TrainN
+# number of buzzes per train and minute
+ICISBFIminss <- aggregate(Nb ~ POD + ChunkEnd + date + hour + day + month
+                             + datehours + Station + season + TrainN, FUN="sum", data = ICISBFI)
+
+#
+ICISBFImin$BPM <- ifelse(ICISBFImin$Nb >= 1, 1, 0)
+ICISBFImin$DPM <- 1 
+
+rm(ICISBFImins)
+ICISBFImin$Nbrate <- round(ICISBFImin$Nb/ICISBFImin$Nclicks*100, 2)
+ICISBFImin$Nb_train <- round(ICISBFImin$Nb/ICISBFImin$TrainN, 2)
+ICISBFImin$BPMrate <- round(ICISBFImin$BPM/ICISBFImin$DPM*100, 2)
+
+#' BPM per hour and BPH 
+ICISBFIhour <- aggregate(BPM ~ POD + datehours + date + month + day +
+                              hour + Station + season, FUN="sum", data = ICISBFImin)
+ICISBFIhour$ChunkEnd <- as.POSIXct(ICISBFIhour$datehours, 
+                                      format = "%Y-%m-%d %H", tz = "UTC")
+ICISBFIhours <- aggregate(Nb ~ POD + datehours + date + month + day + 
+                               hour + Station + season, FUN="sum", data = ICISBFImin)
+ICISBFIhour$Nb <- ICISBFIhours$Nb
+ICISBFIhours <- aggregate(Nclicks ~ POD + datehours + date + month + day + 
+                               hour + Station + season, FUN="sum", data = ICISBFImin)
+ICISBFIhour$Nclicks <- ICISBFIhours$Nclicks
+ICISBFIhours <- aggregate(DPM ~ POD + datehours + date + month + day + 
+                               hour + Station + season, FUN="sum", data = ICISBFImin)
+ICISBFIhour$DPM <- ICISBFIhours$DPM
+ICISBFIhours <- aggregate(TrainN ~ POD + datehours + date + month + day + 
+                               hour + Station + season, FUN=function(x) length(unique(x)), data = ICISBFI)
+ICISBFIhour$TrainN <- ICISBFIhours$TrainN
+rm(ICISBFIhours)
+
+ICISBFIhour$BPH <- ifelse(ICISBFIhour$BPM >= 1, 1, 0)
+ICISBFIhour$DPH <- 1 
+
+ICISBFIhour$BPMrate <- round(ICISBFIhour$BPM/ICISBFIhour$DPM*100, 2)
+ICISBFIhour$BPMratio <- round(ICISBFIhour$BPM/ICISBFIhour$DPM, 2)
+ICISBFIhour$Nbrate <- round(ICISBFIhour$Nb/ICISBFIhour$Nclicks*100, 2)
+ICISBFIhour$Nb_train <- round(ICISBFIhour$Nb/ICISBFIhour$TrainN, 2)
+
+#' BPH per day 
+ICISBFIday <- aggregate(BPM ~ POD + date + month + day + Station + season, FUN="sum", 
+                           data = ICISBFIhour)
+ICISBFIdays <- aggregate(DPM ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICISBFIhour)
+ICISBFIday$DPM <- ICISBFIdays$DPM
+ICISBFIdays <- aggregate(BPH ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICISBFIhour)
+ICISBFIday$BPH <- ICISBFIdays$BPH
+ICISBFIdays <- aggregate(DPH ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICISBFIhour)
+ICISBFIday$DPH <- ICISBFIdays$DPH
+ICISBFIdays <- aggregate(Nb ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICISBFIhour)
+ICISBFIday$Nb <- ICISBFIdays$Nb
+ICISBFIdays <- aggregate(Nclicks ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICISBFIhour)
+ICISBFIday$Nclicks <- ICISBFIdays$Nclicks
+ICISBFIdays <- aggregate(TrainN ~ POD + date + month + day + Station + season, FUN=function(x) length(unique(x)), 
+                            data = ICISBFI)
+ICISBFIday$TrainN <- ICISBFIdays$TrainN
+rm(ICISBFIdays)
+
+ICISBFIday$BPMrate <- round(ICISBFIday$BPM/ICISBFIday$DPM*100, 2)
+ICISBFIday$BPMratio <- round(ICISBFIday$BPM/ICISBFIday$DPM, 2)
+ICISBFIday$Nbrate <- round(ICISBFIday$Nb/ICISBFIday$Nclicks*100, 2)
+ICISBFIday$Nb_train <- round(ICISBFIday$Nb/ICISBFIday$TrainN, 2)
+
+#' 10 minute division 
+ICISBFI <- ICISBFI %>%
+  mutate(
+    timeframe10min = floor_date(ChunkEnd, unit = "10 minutes"))
+
+ICISBFI10min <- aggregate(Nb ~ POD + timeframe10min + date + hour + day + month
+                             + datehours + Station + season, FUN="sum", data = ICISBFI)
+ICISBFI10min$BP10M <- ifelse(ICISBFI10min$Nb >= 1, 1, 0)
+ICISBFI10min$DP10M <- 1 
+
+#' BP10M per hour  
+ICISBFIhours <- aggregate(BP10M ~ POD + datehours + date + month + day +
+                               hour + Station + season, FUN="sum", data = ICISBFI10min)
+ICISBFIhour$BP10M <- ICISBFIhours$BP10M 
+ICISBFIhours <- aggregate(DP10M ~ POD + datehours + date + month + day +
+                               hour + Station + season, FUN="sum", data = ICISBFI10min)
+ICISBFIhour$DP10M <- ICISBFIhours$DP10M 
+rm(ICISBFIhours)
+ICISBFIhour$BP10Mrate <- round(ICISBFIhour$BP10M/ICISBFIhour$DP10M*100, 2)
+ICISBFIhour$BP10Mratio <- round(ICISBFIhour$BP10M/ICISBFIhour$DP10M, 2)
+
+#' BP10M per day 
+ICISBFIdays <- aggregate(BP10M ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICISBFIhour)
+ICISBFIday$BP10M <- ICISBFIdays$BP10M
+ICISBFIdays <- aggregate(DP10M ~ POD + date + month + day + Station + season, FUN="sum", 
+                            data = ICISBFIhour)
+ICISBFIday$DP10M <- ICISBFIdays$DP10M
+rm(ICISBFIdays)
+ICISBFIday$BP10Mrate <- round(ICISBFIday$BP10M/ICISBFIday$DP10M*100, 2)
+ICISBFIday$BP10Mratio <- round(ICISBFIday$BP10M/ICISBFIday$DP10M, 2)
+
+# 5.5.1. General patterns in SBFI -----------------------------------------
+
+#' percentage foraging/detection 
+ICISBFIday$percentage <- (ICISBFIday$BPH/ICISBFIday$DPH)*100
+# Calculate monthly foraging percentage BPHrate per day per location
+monthlyforagingSBFI <- ICISBFIday %>%
+  group_by(Station, month) %>%                   # Group by month and location
+  summarise(percentagemonth = mean(percentage, na.rm = TRUE), .groups = 'drop')
+# monthly BPM rate per hour per location
+monthlyforagingSBFI <- ICISBFIhour %>%
+  group_by(Station, month) %>%                   # Group by month and location
+  dplyr::summarise(percentagemonth = mean(BPMrate, na.rm = TRUE), .groups = 'drop')
+
+ggplot(monthlyforagingSBFI, aes(x = as.factor(month), y = percentagemonth, fill = Station)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = round(percentagemonth)),  
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5) +
+  labs(title = "Percentage per Month (method SBFI et al 2013)",
+       x = "Month",
+       y = "Percentage foraging/detection (%)") +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  facet_wrap(~Station)
+
+ggplot(ICISBFIhour, aes(x = as.factor(month), y = BPMrate)) + 
+  stat_boxplot(geom = "errorbar", # Error bars
+               width = 0.25) +    # Bars width
+  geom_boxplot() + 
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red") +
+  facet_wrap(~Station) + 
+  xlab("Month") +  
+  ylab("hourly BPM rate")   
+
+
+ggplot(ICISBFIhour, aes(x = as.factor(Station), y = BPMrate)) + 
+  stat_boxplot(geom = "errorbar", # Error bars
+               width = 0.25) +    # Bars width
+  geom_boxplot() + 
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "red") +
+  ylab("hourly BPM rate")
+
+ggplot(data = ICISBFIday) + 
+  geom_point(aes(x= date, y = percentage, colour = factor(Station))) +
+  geom_line(aes(x= date, y = percentage, colour = factor(Station))) + 
+  theme_bw() + 
+  theme(axis.title = element_text(size = 16),
+        axis.title.y = element_blank(),
+        axis.text = element_text(size = 16),
+        legend.title = element_blank()) +
+  labs(y = "percentage per date") 
+
+ggplot(data = ICISBFIhour) + 
+  geom_col(aes(x = as.factor(month), y = BPM, fill = factor(Station)))+ 
+  theme_bw() +
+  facet_wrap(~Station) + 
+  theme(axis.title = element_text(size = 10),
+        axis.text = element_text(size = 10),
+        axis.title.x = element_blank()) +
+  labs(y = "BPM per hour", x = "months")
+
+
+mean(ICISBFImin$BPMrate) #40.28%  - 33.52
+mean(ICISBFIhour$BPMrate) #31.57%  - 24.87
+mean(ICISBFIday$BPMrate) #36.87% - 29.83
+
+# total Number of BPM / DPM = 13440/39037*100 = 34.43%
+# total Number of BPH / DPH = 3523/6527*100 = 53.98%
+
+# average buzz ICI 
+test <- ICISBFI[ICISBFI$Nb == 1,]
+mean(test$ICIms) # mean buzz ICI for SBFI is 2.21 ms - not possible to calculate due to multiple requirements
+
+#per Station 
+filtertest <- ICISBFImin[ICISBFImin$Station == "bpns-Faulbaums", ]
+mean(filtertest$BPMrate) #42.55% min 32.15% hour 38.61% day   
+filtertest <- ICISBFImin[ICISBFImin$Station == "bpns-Reefballs belwind", ]
+mean(filtertest$BPMrate) #37.33% min 31.02% hour 35.14% day 
