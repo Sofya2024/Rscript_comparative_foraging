@@ -830,7 +830,7 @@ ICISBFI <- ICISBFI %>%
         buzz_start <- start[i] 
         if(buzz_start > 1) { # buzz cannot be at position one of the minute because then there can be no search before
           potential_search_rows <- 1:(buzz_start - 1)
-          sb[potential_search_rows] <- Clicks.s[potential_search_rows] < 150 | sb[potential_search_rows]
+          sb[potential_search_rows] <- Clicks.s[potential_search_rows] < 200 | sb[potential_search_rows]
           }}
       sb
       },
