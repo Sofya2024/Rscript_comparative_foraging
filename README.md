@@ -7,6 +7,8 @@ code was made in R studio and R version 4.3.1.
 
 This script (`Rscript`) covers the foraging detection, comparison, and analysis pipeline (sections 5–9 below). It assumes a cleaned input dataset which can be found at Calonge, A.; Aoufi, S.; Conings, B.; Deneudt, K.; Debusschere, E.; Flanders Marine Institute (VLIZ); (2026): LifeWatch observatory data: Inter-click intervals of harbour porpoises recorded from two F-POD stations of the Belgian cetacean passive acoustic network in 2023. Marine Data Archive. https://doi.org/10.14284/786 
 
+ICIs for NBHFs species for the whole detection period were exported directly using the built-in export routines in the Chelonia F-POD application version January 25, 2024, from raw FP1/FP3 data files, retaining only detections classified as high and moderate quality. 
+
 ## Data and preprocessing
 
 sections 1-4 contain cleaning of the dataset to obtain the final ICI file by combining all different deployments in 2023 for both locations into one datafile. 
